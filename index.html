@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Fool's Journey - Full Game</title>
+    <!-- Google Font for polished typography -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- React via CDN -->
+    <script
+      crossorigin
+      src="https://unpkg.com/react@17/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/babel-standalone@6/babel.min.js"
+    ></script>
+    <!-- Normalize -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.css"
+    />
+    <style>
+      /* Polished minimal style: black, white, with tasteful emoji accents */
+      body {
+        background-color: #fff;
+        color: #000;
+        font-family: "Roboto", sans-serif;
+        margin: 0;
+        padding: 20px;
+        transition: background-color 0.3s;
+      }
+      header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      header h1 {
+        font-size: 2.2rem;
+        margin: 0;
+      }
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        grid-gap: 20px;
+      }
+      .main-panel {
+        grid-column: 1 / 2;
+      }
+      .side-panel {
+        grid-column: 2 / 3;
+      }
+      .zone {
+        margin-bottom: 15px;
+      }
+      .zone-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+        border-bottom: 1px solid #000;
+        padding-bottom: 3px;
+      }
+      .cards-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .card {
+        border: 1px solid #000;
+        padding: 8px;
+        width: 70px;
+        height: 100px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #fff;
+        cursor: pointer;
+        user-select: none;
+        transition: transform 0.3s, opacity 0.3s;
+      }
+      .card.selected {
+        transform: scale(1.1);
+        border-color: #333;
+      }
+      button {
+        margin: 5px 0;
+        padding: 8px 12px;
+        border: none;
+        background-color: #000;
+        color: #fff;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      button:hover {
+        background-color: #444;
+      }
+      button:disabled {
+        background-color: #888;
+        cursor: not-allowed;
+      }
+      .log,
+      .status,
+      .instructions {
+        border: 1px solid #000;
+        padding: 10px;
+        background-color: #fff;
+      }
+      .log {
+        height: 150px;
+        overflow-y: auto;
+        font-size: 0.9rem;
+      }
+      .control-panel {
+        margin-top: 10px;
+      }
+      @media (max-width: 800px) {
+        .container {
+          grid-template-columns: 1fr;
+        }
+        .side-panel {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🌟 The Fool's Journey 🌟</h1>
+    </header>
+    <div class="container">
+      <div class="main-panel" id="root"></div>
+      <div class="side-panel">
+        <div class="instructions">
+          <h2>Instructions</h2>
+          <p>
+            Welcome to <strong>The Fool's Journey</strong> card game!
+            <br />
+            Click on any card in the Adventure Field, Satchel, or Equipped zone to
+            see available actions.
+          </p>
+          <ul>
+            <li>You start with 25 vitality points.</li>
+            <li>In each adventure, 4 cards are dealt from the deck.</li>
+            <li>
+              Minor Arcana cards (by suit):
+              <ul>
+                <li>
+                  <strong>Cups</strong>: Replenish vitality (max 25).
+                </li>
+                <li>
+                  <strong>Batons</strong>: Equip as Strength (only 1 allowed).
+                </li>
+                <li>
+                  <strong>Swords</strong>: Equip as Volition (only 1 allowed).
+                </li>
+                <li>
+                  <strong>Coins</strong>: Equip as Wisdom (up to 3 allowed).
+                </li>
+              </ul>
+            </li>
+            <li>You can also store cards in your Satchel (max 3 cards).</li>
+            <li>
+              Major Arcana (Challenge cards) must be resolved using
+              equipped cards or directly (vitality loss).
+            </li>
+          </ul>
+        </div>
+        <div class="status">
+          <h3>Status</h3>
+          <div id="statusDisplay"></div>
+        </div>
+        <div class="log">
+          <h3>Play Log</h3>
+          <div id="logDisplay"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Control Panel below the main game zones -->
+    <div class="control-panel" style="max-width: 1000px; margin: 10px auto;">
+      <button id="dealNewAdventure">Deal New Adventure</button>
+      <button id="resetGame">Reset Game</button>
+    </div>
+    <script type="text/babel">
+      const { useState, useEffect } = React;
+
+      // Helper: Deep copy for state immutability
+      const deepCopy = (obj) => JSON.parse(JSON.stringify(obj));
+
+      // Build deck: Minor arcana (2–10) and some major arcana challenges
+      const buildDeck = () => {
+        let deck = [];
+        const suits = ["Cups", "Batons", "Swords", "Coins"];
+        for (let suit of suits) {
+          for (let num = 2; num <= 10; num++) {
+            deck.push({
+              id: `${suit}-${num}-${Math.random().toString(36).substr(2, 6)}`,
+              type: "minor",
+              suit,
+              value: num,
+              display: `${num} ${suit[0]}`
+            });
+          }
+        }
+        const majorArcana = [
+          { name: "Death", value: 13 },
+          { name: "The Magician", value: 1 },
+          { name: "The Empress", value: 3 },
+          { name: "The Emperor", value: 4 },
+          { name: "The Chariot", value: 6 }
+        ];
+        for (let card of majorArcana) {
+          deck.push({
+            id: `Trump-${card.name}-${Math.random().toString(36).substr(2, 6)}`,
+            type: "major",
+            suit: "Trump",
+            value: card.value,
+            display: card.name
+          });
+        }
+        // Shuffle deck
+        for (let i = deck.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        return deck;
+      };
+
+      // Card Component with accessibility
+      const Card = ({ card, onClick, isSelected }) => (
+        <div
+          className={`card ${isSelected ? "selected" : ""}`}
+          onClick={onClick}
+          role="button"
+          tabIndex="0"
+          aria-label={`Card: ${card.display}`}
+          onKeyPress={(e) => {
+            if (e.key === "Enter") onClick();
+          }}
+        >
+          <div>{card.display}</div>
+          <div style={{ fontSize: "14px" }}>
+            {card.type === "major" ? "⭐" : "🃏"}
+          </div>
+        </div>
+      );
+
+      // Main Game Component implementing full game logic
+      const Game = () => {
+        const [deck, setDeck] = useState([]);
+        const [adventureField, setAdventureField] = useState([]);
+        const [satchel, setSatchel] = useState([]);
+        const [discardPile, setDiscardPile] = useState([]);
+        const [equipment, setEquipment] = useState({
+          wisdom: [],
+          strength: null,
+          volition: null
+        });
+        const [vitality, setVitality] = useState(25);
+        const [selected, setSelected] = useState({
+          zone: null,
+          index: null,
+          card: null
+        });
+        const [playLog, setPlayLog] = useState([]);
+
+        // Log helper
+        const addLog = (msg) => {
+          setPlayLog((prev) => [msg, ...prev]);
+        };
+
+        // Deal new cards into the Adventure Field
+        const dealAdventure = (numCards, deckToUse = deck) => {
+          let newDeck = [...deckToUse];
+          let newCards = [];
+          for (let i = 0; i < numCards; i++) {
+            if (newDeck.length > 0) {
+              newCards.push(newDeck.shift());
+            }
+          }
+          setAdventureField((prev) => [...prev, ...newCards]);
+          setDeck(newDeck);
+          addLog(`Dealt ${newCards.length} card(s) to the Adventure Field.`);
+        };
+
+        // Reset game: reinitialize all state
+        const resetGame = () => {
+          const newDeck = buildDeck();
+          const dealtCards = newDeck.slice(0, 4);
+          const remainingDeck = newDeck.slice(4);
+          setDeck(remainingDeck);
+          setAdventureField(dealtCards);
+          setSatchel([]);
+          setDiscardPile([]);
+          setEquipment({ wisdom: [], strength: null, volition: null });
+          setVitality(25);
+          setSelected({ zone: null, index: null, card: null });
+          setPlayLog([]);
+          addLog("Game reset. Vitality is 25.");
+        };
+
+        // Initialization: Build deck and immediately deal first 4 cards.
+        useEffect(() => {
+          const newDeck = buildDeck();
+          const dealtCards = newDeck.slice(0, 4);
+          const remainingDeck = newDeck.slice(4);
+          setDeck(remainingDeck);
+          setAdventureField(dealtCards);
+          addLog("Game started. Vitality is 25.");
+        }, []);
+
+        // Update side-panel status and log displays
+        useEffect(() => {
+          const statusText = `Vitality: ${vitality}
+Wisdom: ${equipment.wisdom.map((c) => c.display).join(", ") || "None"}
+Strength: ${equipment.strength ? equipment.strength.display : "None"}
+Volition: ${equipment.volition ? equipment.volition.display : "None"}
+Satchel: ${satchel.map((c) => c.display).join(", ") || "Empty"}
+Deck: ${deck.length} card(s)`;
+          document.getElementById("statusDisplay").innerText = statusText;
+          document.getElementById("logDisplay").innerHTML = playLog
+            .map((msg) => `<div>${msg}</div>`)
+            .join("");
+        }, [vitality, equipment, satchel, deck, playLog]);
+
+        // Helper: Remove a card from a zone
+        const removeCard = (zone, index) => {
+          if (zone === "adventure") {
+            const newField = deepCopy(adventureField);
+            newField.splice(index, 1);
+            setAdventureField(newField);
+          } else if (zone === "satchel") {
+            const newSatchel = deepCopy(satchel);
+            newSatchel.splice(index, 1);
+            setSatchel(newSatchel);
+          }
+        };
+
+        // Clear current selection
+        const clearSelection = () => {
+          setSelected({ zone: null, index: null, card: null });
+        };
+
+        // Select a card from a zone
+        const selectCard = (zone, index, card) => {
+          setSelected({ zone, index, card });
+          addLog(`Selected ${card.display} from ${zone}.`);
+        };
+
+        // Action: Store card in Satchel (from Adventure Field only)
+        const storeInSatchel = () => {
+          if (selected.zone === "adventure" && satchel.length < 3) {
+            setSatchel((prev) => [...prev, selected.card]);
+            removeCard("adventure", selected.index);
+            addLog(`Stored ${selected.card.display} in Satchel.`);
+            clearSelection();
+          }
+        };
+
+        // Action: Equip card based on its suit
+        const equipCard = () => {
+          const card = selected.card;
+          if (card.type !== "minor") return;
+          if (card.suit === "Coins" && equipment.wisdom.length < 3) {
+            setEquipment((prev) => ({
+              ...prev,
+              wisdom: [...prev.wisdom, card]
+            }));
+            removeCard(selected.zone, selected.index);
+            addLog(`Equipped ${card.display} as Wisdom.`);
+            clearSelection();
+          } else if (card.suit === "Batons" && !equipment.strength) {
+            setEquipment((prev) => ({ ...prev, strength: card }));
+            removeCard(selected.zone, selected.index);
+            addLog(`Equipped ${card.display} as Strength.`);
+            clearSelection();
+          } else if (card.suit === "Swords" && !equipment.volition) {
+            setEquipment((prev) => ({ ...prev, volition: card }));
+            removeCard(selected.zone, selected.index);
+            addLog(`Equipped ${card.display} as Volition.`);
+            clearSelection();
+          }
+        };
+
+        // Action: Replenish vitality using a Cups card
+        const replenishVitality = () => {
+          const card = selected.card;
+          if (card.type === "minor" && card.suit === "Cups") {
+            const gain = card.value;
+            const newVitality = Math.min(25, vitality + gain);
+            setVitality(newVitality);
+            removeCard(selected.zone, selected.index);
+            addLog(
+              `Used ${card.display} to replenish vitality by ${gain}. New Vitality: ${newVitality}.`
+            );
+            clearSelection();
+          }
+        };
+
+        // Action: Discard a card
+        const discardCard = () => {
+          removeCard(selected.zone, selected.index);
+          setDiscardPile((prev) => [...prev, selected.card]);
+          addLog(`Discarded ${selected.card.display}.`);
+          clearSelection();
+        };
+
+        // Action: Resolve a major challenge using equipped Volition
+        const resolveWithVolition = () => {
+          const challenge = selected.card;
+          if (challenge.type !== "major" || !equipment.volition) return;
+          if (equipment.volition.value >= challenge.value) {
+            addLog(
+              `Volition ${equipment.volition.display} overcame challenge ${challenge.display}.`
+            );
+            setEquipment((prev) => ({ ...prev, volition: null }));
+            removeCard("adventure", selected.index);
+            setDiscardPile((prev) => [...prev, challenge]);
+          } else {
+            addLog(
+              `Volition ${equipment.volition.display} partially reduced challenge ${challenge.display}.`
+            );
+            challenge.value = challenge.value - equipment.volition.value;
+            setEquipment((prev) => ({ ...prev, volition: null }));
+            setAdventureField(deepCopy(adventureField));
+          }
+          clearSelection();
+        };
+
+        // Action: Resolve a major challenge using equipped Strength
+        const resolveWithStrength = () => {
+          const challenge = selected.card;
+          if (challenge.type !== "major" || !equipment.strength) return;
+          if (equipment.strength.value >= challenge.value) {
+            if (equipment.strength.value === challenge.value) {
+              addLog(
+                `Strength ${equipment.strength.display} exactly resolved challenge ${challenge.display}.`
+              );
+              setEquipment((prev) => ({ ...prev, strength: null }));
+            } else {
+              const remaining = equipment.strength.value - challenge.value;
+              addLog(
+                `Strength ${equipment.strength.display} resolved challenge ${challenge.display}. Remaining Strength: ${remaining}.`
+              );
+              setEquipment((prev) => ({
+                ...prev,
+                strength: {
+                  ...equipment.strength,
+                  value: remaining,
+                  display: `${remaining} B`
+                }
+              }));
+            }
+            removeCard("adventure", selected.index);
+            setDiscardPile((prev) => [...prev, challenge]);
+          } else {
+            const diff = challenge.value - equipment.strength.value;
+            addLog(
+              `Strength ${equipment.strength.display} insufficient; Vitality reduced by ${diff}.`
+            );
+            setVitality((prev) => Math.max(0, prev - diff));
+            setEquipment((prev) => ({ ...prev, strength: null }));
+            removeCard("adventure", selected.index);
+            setDiscardPile((prev) => [...prev, challenge]);
+          }
+          clearSelection();
+        };
+
+        // Action: Resolve challenge directly (vitality loss)
+        const resolveDirectly = () => {
+          const challenge = selected.card;
+          if (challenge.type !== "major") return;
+          addLog(
+            `Directly resolved challenge ${challenge.display} – Vitality reduced by ${challenge.value}.`
+          );
+          setVitality((prev) => Math.max(0, prev - challenge.value));
+          removeCard("adventure", selected.index);
+          setDiscardPile((prev) => [...prev, challenge]);
+          clearSelection();
+        };
+
+        // Check if we need to deal new adventure cards or end the game
+        useEffect(() => {
+          if (adventureField.length < 2 && deck.length > 0) {
+            const needed = 4 - adventureField.length;
+            dealAdventure(needed);
+          }
+          if (vitality <= 0) {
+            addLog("Game Over! Vitality depleted.");
+          }
+        }, [adventureField, deck, vitality]);
+
+        // Determine available actions based on the selected card
+        const getActions = () => {
+          if (!selected.card) return [];
+          const card = selected.card;
+          const actions = [];
+          if (card.type === "minor") {
+            if (card.suit === "Cups" && vitality < 25) {
+              actions.push({
+                label: "Replenish Vitality",
+                handler: replenishVitality
+              });
+            }
+            if (card.suit === "Batons" && !equipment.strength) {
+              actions.push({
+                label: "Equip as Strength",
+                handler: equipCard
+              });
+            }
+            if (card.suit === "Swords" && !equipment.volition) {
+              actions.push({
+                label: "Equip as Volition",
+                handler: equipCard
+              });
+            }
+            if (card.suit === "Coins" && equipment.wisdom.length < 3) {
+              actions.push({
+                label: "Equip as Wisdom",
+                handler: equipCard
+              });
+            }
+            if (selected.zone === "adventure" && satchel.length < 3) {
+              actions.push({
+                label: "Store in Satchel",
+                handler: storeInSatchel
+              });
+            }
+            actions.push({ label: "Discard", handler: discardCard });
+          } else if (card.type === "major") {
+            if (equipment.volition) {
+              actions.push({
+                label: "Resolve with Volition",
+                handler: resolveWithVolition
+              });
+            }
+            if (equipment.strength) {
+              actions.push({
+                label: "Resolve with Strength",
+                handler: resolveWithStrength
+              });
+            }
+            actions.push({ label: "Resolve Directly", handler: resolveDirectly });
+          }
+          return actions;
+        };
+
+        return (
+          <div>
+            <div className="zone">
+              <div className="zone-title">Adventure Field</div>
+              <div className="cards-container" role="region" aria-label="Adventure Field">
+                {adventureField.map((card, index) => (
+                  <Card
+                    key={card.id}
+                    card={card}
+                    isSelected={
+                      selected.zone === "adventure" && selected.index === index
+                    }
+                    onClick={() => selectCard("adventure", index, card)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="zone">
+              <div className="zone-title">Satchel</div>
+              <div className="cards-container" role="region" aria-label="Satchel">
+                {satchel.map((card, index) => (
+                  <Card
+                    key={card.id}
+                    card={card}
+                    isSelected={
+                      selected.zone === "satchel" && selected.index === index
+                    }
+                    onClick={() => selectCard("satchel", index, card)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="zone">
+              <div className="zone-title">Equipped</div>
+              <div className="cards-container" role="region" aria-label="Equipment">
+                {equipment.wisdom.map((card, index) => (
+                  <Card key={card.id} card={card} isSelected={false} onClick={() => {}} />
+                ))}
+                {equipment.strength && (
+                  <Card card={equipment.strength} isSelected={false} onClick={() => {}} />
+                )}
+                {equipment.volition && (
+                  <Card card={equipment.volition} isSelected={false} onClick={() => {}} />
+                )}
+              </div>
+            </div>
+            {selected.card && (
+              <div className="zone">
+                <div className="zone-title">
+                  Actions for {selected.card.display}
+                </div>
+                {getActions().map((action, idx) => (
+                  <button key={idx} onClick={action.handler}>
+                    {action.label}
+                  </button>
+                ))}
+                <button onClick={clearSelection}>Cancel Selection</button>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // Render game and add interactivity for control panel buttons
+      const App = () => {
+        return <Game />;
+      };
+
+      ReactDOM.render(<App />, document.getElementById("root"));
+
+      // Add event listeners for control panel buttons
+      document
+        .getElementById("dealNewAdventure")
+        .addEventListener("click", () => {
+          // For demo purposes, reload to simulate dealing new cards.
+          window.location.reload();
+        });
+
+      document.getElementById("resetGame").addEventListener("click", () => {
+        window.location.reload();
+      });
+    </script>
+  </body>
+</html>
